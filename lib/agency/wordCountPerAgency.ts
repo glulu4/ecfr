@@ -1,9 +1,8 @@
+
 import {XMLParser} from 'fast-xml-parser';
 import {getTitleXML} from '../getTitleXML';
-import {getJSONStructure} from '../getJSONStructure';
+import {getAgenciesByTitle} from './text2AgencyMap';
 
-
-/* ---------- XML parser instance ---------- */
 const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
@@ -11,31 +10,27 @@ const parser = new XMLParser({
     allowBooleanAttributes: true,
 });
 
-/* ---------- helpers ---------- */
-const normalizeAgency = (raw = '') =>
-    raw.replace(/^chapter\s+[ivxlcdm]+\s*—\s*/i, '')
-        .replace(/\s*\[.*?\]\s*$/i, '')
-        .trim();
+const cleanHead = (txt = '') =>
+    txt.replace(/^chapter\s+[ivxlcdm]+\s*—\s*/i, '').trim();
 
 const isReserved = (head?: string) =>
     head?.toUpperCase().includes('[RESERVED]') ?? false;
 
-/* recursively collect <DIV8 TYPE="SECTION"> ----------------------- */
-const collectSections = (node: any, out: any[] = []) => {
-    if (!node || typeof node !== 'object') return out;
+function harvestSections(node: any, bag: any[] = []): any[] {
+    if (!node || typeof node !== 'object') return bag;
 
-    if (node['@_TYPE'] === 'PART' && isReserved(node.HEAD)) return out;
-    if (node['@_TYPE'] === 'SECTION') out.push(node);
+    // fast-xml-parser will keep attributes under "@_…" keys
+    if (node['@_TYPE'] === 'PART' && isReserved(node.HEAD)) return bag;
+    if (node['@_TYPE'] === 'SECTION') bag.push(node);
 
-    for (const child of Object.values(node)) {
-        if (Array.isArray(child)) child.forEach(c => collectSections(c, out));
-        else if (typeof child === 'object') collectSections(child, out);
+    for (const val of Object.values(node)) {
+        if (Array.isArray(val)) val.forEach(c => harvestSections(c, bag));
+        else if (typeof val === 'object') harvestSections(val, bag);
     }
-    return out;
-};
+    return bag;
+}
 
-/* grab all text in a <SECTION> ------------------------------------ */
-const wordCountOfSection = (section: any): number => {
+function wordsInSection(sec: any): number {
     const pull = (p: any): string =>
         typeof p === 'string'
             ? p
@@ -43,66 +38,54 @@ const wordCountOfSection = (section: any): number => {
                 ? p.map(pull).join(' ')
                 : Object.values(p ?? {}).map(pull).join(' ');
 
-    const txt = section.P ? pull(section.P) : '';
+    const txt = sec.P ? pull(sec.P) : '';
     return txt.trim().split(/\s+/).filter(Boolean).length;
-};
+}
 
-/* ----------------------------------------------------------------- *
- *    MAIN: word-count by agency
- * ----------------------------------------------------------------- */
+function gatherChapters(node: any, out: any[] = []): any[] {
+    if (!node || typeof node !== 'object') return out;
+
+    if (node.DIV3) {
+        const c = node.DIV3;
+        Array.isArray(c) ? out.push(...c) : out.push(c);
+    }
+    for (const v of Object.values(node)) {
+        if (Array.isArray(v)) v.forEach(n => gatherChapters(n, out));
+        else if (typeof v === 'object') gatherChapters(v, out);
+    }
+    return out;
+}
+
 export async function getWordCountByAgency(
     title: number,
-    issueDate: string,
+    issueDate: string
 ): Promise<Record<string, number>> {
 
-    /* 1 – fetch both artefacts in parallel -------------------------- */
-    const [xml, struct] = await Promise.all([
-        getTitleXML(title, issueDate),
-        getJSONStructure(title, issueDate),
-    ]);
-
-    /* 2 – PART → agency map from the structure JSON ----------------- */
-    const part2agency: Record<string, string> = {};
-    (function walk(n: any, agency = ''): void {
-        if (!n) return;
-        const t = n.type ?? n.TYPE;
-
-        if (t === 'chapter')
-            agency = normalizeAgency(n.label ?? n.HEAD ?? '');
-
-        if (t === 'part' && !n.reserved && agency) {
-            part2agency[String(n.identifier)] = agency;
-        }
-
-        (n.children ?? []).forEach((c: any) => walk(c, agency));
-    })(struct);
-
-    /* 3 – parse XML ------------------------------------------------- */
+    const titleMap = (await getAgenciesByTitle())[String(title)] ?? {};
+    const xml = await getTitleXML(title, issueDate);
     const ecfr = parser.parse(xml)?.ECFR;
-    if (!ecfr) throw new Error('ECFR root missing in XML');
+    if (!ecfr) throw new Error('ECFR root missing');
 
-    /* 4 – collect every <DIV5 TYPE="PART"> -------------------------- */
-    const parts: any[] = [];
-    (function walk(node: any): void {
-        if (!node || typeof node !== 'object') return;
-        if (node['@_TYPE'] === 'PART') parts.push(node);
-        for (const c of Object.values(node))
-            Array.isArray(c) ? c.forEach(walk) : walk(c);
-    })(ecfr);
+    const chapters = gatherChapters(ecfr);
 
-    /* 5 – tally words ---------------------------------------------- */
-    const out: Record<string, number> = {};
+    const tally: Record<string, number> = {};
 
-    for (const part of parts) {
-        const num = String(part['@_N'] ?? part.N ?? '').replace(/\D/g, '');
-        const agency = part2agency[num];
-        if (!agency) continue;                              // unmapped
+    for (const ch of chapters) {
+        if (!ch) continue;
 
-        const words = collectSections(part)
-            .reduce((s, sec) => s + wordCountOfSection(sec), 0);
+        const chapNum = String(ch['@_N'] ?? '').trim();
+        const mapped = titleMap[chapNum];
+        const headTxt = typeof ch.HEAD === 'string'
+            ? ch.HEAD
+            : ch.HEAD?.['#text'] ?? '';
+        const agency = mapped ?? cleanHead(headTxt);
+        if (!agency) continue;
 
-        out[agency] = (out[agency] ?? 0) + words;
+        const words = harvestSections(ch).reduce(
+            (s, sec) => s + wordsInSection(sec), 0);
+
+        tally[agency] = (tally[agency] ?? 0) + words;
     }
 
-    return out;
+    return tally;
 }

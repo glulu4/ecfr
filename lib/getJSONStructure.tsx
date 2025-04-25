@@ -12,26 +12,13 @@ export async function getJSONStructure(
     issueDate: string
 ) {
 
-
-
-
     const url = `${config.baseUrl}/api/get-json?title=${title}&date=${issueDate}`;
-    console.log("Calling URL: ", url);
     
     const res = await fetch(url);
     
     if (res.status === 403) {
         throw new Error("Blocked by CAPTCHA or request filter");
     }
-
-    console.log("getJSONStructure res: ", res);
     
-    
-
-    // console.log("getJSONStructure res: ", await res.json());
-    
-
-
-
     return await res.json();
 }

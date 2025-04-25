@@ -14,11 +14,6 @@ export async function fetchAgencies() {
         throw new Error("No agencies found");
     }
 
-    // // Sort agencies by name
-    // data.agencies.sort((a: { name: string }, b: { name: string }) => {
-    //     return a.name.localeCompare(b.name);
-    // });
-
     return data.agencies as Agency[];
 }
 

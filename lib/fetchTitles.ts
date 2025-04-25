@@ -12,7 +12,6 @@ export async function fetchAllEcfrTitles(): Promise<TitleDisplayData[]> {
     if (!data.titles) {
         throw new Error("No titles found");
     }
-    // Sort titles by number
     data.titles.sort((a: TitleDisplayData, b: TitleDisplayData) => {
         return a.number - b.number;
     });

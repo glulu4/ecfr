@@ -1,42 +1,38 @@
 
-import {getWordCountByAgency} from '@/lib/agency/wordCountPerAgency';
 import {fetchAllEcfrTitles} from '@/lib/fetchTitles';
-import {getJSONStructure} from '@/lib/getJSONStructure';
 import {TitleDisplayData} from '@/types/types';
 import React from 'react';
+import {ChevronRight} from 'lucide-react';
 
 export default async function TitleList() {
     const titles = await fetchAllEcfrTitles();
 
     console.log("Fetched Titles: ", titles[1]);
     
-
-    // // Kick off one word-count fetch per title in parallel
-    const countsArray = await Promise.all(
-        titles.slice(0,5).map((t) => getWordCountByAgency(t.number, t.latest_amended_on))
-    );
-
-    const json = await getJSONStructure(titles[1].number, titles[1].latest_amended_on);
-    console.log("JSON Structure: ", json);
-    
-
     return (
-        <ul className="grid gap-4">
-            {titles.slice(0,5).map((title: TitleDisplayData, idx) => {
-                const wc = countsArray[idx];
+        <ul className="grid gap-6 mx-auto max-w-5xl">
+            {titles.map((title: TitleDisplayData, idx) => {
                 return (
-                    <li key={idx} className="border p-4 rounded hover:shadow transition">
-                        <h2 className="text-lg font-semibold">
-                            Title {title.number}: {title.name}
-                        </h2>
-                        <div className="mt-2 space-y-1">
-                            {Object.entries(wc).map(([agency, count]) => (
-                                <div key={agency}>
-                                    <strong>{agency}</strong>: {count as number} words
-                                </div>
-                            ))}
+                    <li
+                        key={idx}
+                        className="group/item flex items-center justify-between p-4 rounded-lg bg-gray-100 hover:bg-gray-200 shadow-sm transition"
+                    >
+                        <div className='gap-2'>
+                            <h2 className="text-xl font-semibold text-gray-900">
+                                Title {title.number}
+                            </h2>
+                            <p className="text-md text-gray-500">{title.name}</p>
                         </div>
+
+                        <a
+                            href={`/title/${title.number}`}
+                            className="group/edit invisible group-hover/item:visible flex items-center gap-1 text-sm font-medium text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition"
+                        >
+                            <span className="group-hover/edit:text-gray-700">View</span>
+                            <ChevronRight className="h-4 w-4 group-hover/edit:translate-x-0.5 group-hover/edit:text-gray-500 transition-transform" />
+                        </a>
                     </li>
+
                 );
             })}
         </ul>
