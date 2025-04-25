@@ -4,6 +4,7 @@ import {Group} from '@visx/group';
 import {scaleBand, scaleLinear} from '@visx/scale';
 import {AxisLeft, AxisBottom} from '@visx/axis';
 import {max} from 'd3-array';
+import {formatDate} from '@/lib/utils';
 
 interface WordCountData {
     agency: string;
@@ -61,7 +62,7 @@ export function WordCountChart({
                     fontSize="10"
                     fill="#9ca3af"
                 >
-                    Data sourced from e-CFR as of {amendedOn}
+                    Data sourced from e-CFR as of {formatDate(amendedOn)}
                 </text>
 
                 {data.map((d, i) => {
